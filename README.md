@@ -59,7 +59,7 @@ We also spent a long time on a gunshot test that fired but did no damage, and bl
 - **The rejection tests only mean something next to a control.** Forged hit reports were refused all along, but until a real hit landed, a broken pipeline would have passed too. Write the control first.
 - **184 hostile inputs against the PvP events showed no crashes and no money changes.** The normal arguments don't move those values either, so this says less than the number suggests. The two-player suite is what proves the hit logic.
 - **Only Qbox was run.** The fixes were read against QBCore's source, not run on it. ESX wasn't tested.
-- **Flood numbers are four runs on one PC.**
+- **Flood numbers are five runs on one PC.**
 - **The test server's checkout can trail the live server,** so a test here isn't automatically proof about production.
 
 ## Measured facts
@@ -100,13 +100,13 @@ Setup: Ryzen 7 5700X, 32 GB RAM, GTX 1650 Super 4 GB, FXServer `v1.0.0.35245`, g
 
 ### Network events
 
-Four runs on one PC, so treat them as ballpark.
+Five runs on one PC, so treat them as ballpark.
 
 | Events sent | Per tick | Arrived | Result |
 |---|---|---|---|
 | 100 | 1 | 100 | Fine |
-| 500 | 5 | 241 to 268 | About half lost, client stayed connected |
-| 2000 | 20 | 123 to 136 | Client kicked: "Reliable network event overflow" |
+| 500 | 5 | 241 to 293 | About half lost, client stayed connected |
+| 2000 | 20 | 123 to 142 | Client kicked: "Reliable network event overflow" |
 
 Through msgpack, a trailing nil argument is dropped, so the argument count falls. A nil in the middle stays as a hole. NaN, inf and -inf all arrive intact.
 
