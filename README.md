@@ -20,7 +20,8 @@ The tool itself is private. Everything here was measured on a local test server,
 | Every safety refusal in the tool | **26 of 26** |
 | Forged forwarding headers against the loopback check | **7 of 7** refused |
 | Three existing resource self-tests | **48 checks passed, 0 failed** |
-| A new player, from the real creator through to a saved outfit and a relog | **49 of 49** |
+| A new player, from the real creator through to a saved outfit and a relog | **50 of 50** |
+| Three relogs per run, watching the HUD's loop, what is drawn on screen and client errors | **21 of 21, twice.** 13 of 21 on the unfixed code |
 | 28 bad character payloads straight to the server, plus valid ones at the limits | **47 of 47** |
 | 22 UI layouts measured for overflow, overlap and clipping, then checked in the real game | **Clean, after fixes** |
 | 45 reward events across 7 heist resources, fired from nowhere near the heist | **1 real payout, fixed** |
@@ -46,6 +47,17 @@ The owner reported two things: new characters got the wrong apartment screen, an
 - **A client that could say "I finished".** One heist checked completion before paying, but the event that marks completion believed any client, so two events paid out in full. A guard is only as good as whatever sets the flag.
 - **Layouts:** buttons 190 px off screen, text running over its neighbour, a badge on top of a name, labels cut off behind tiles. One cause is worth knowing: a `relative` class from a component's root beats an `absolute` you pass in, and the element lands somewhere else with no error.
 
+## Round three: the owner sent one screenshot
+
+Square tiles drawn on top of each other, with the question: why didn't you see this? The honest answers were more useful than the fix.
+
+- **We only tested the default.** The layout's spacing nests hexagons, and players can switch tiles to squares or circles. "Every shape and finish" was on our list and never got run. The audit now runs all of them, at several resolutions, and saves a picture of each.
+- **The overlap check compared text with text.** Controls overlapping controls were invisible to it. A hexagon's button box is still a rectangle, so the check has to look at the painted shape.
+- **Shading stopped at the 16:9 stage,** leaving bright bands on ultrawide and 5:4. No metric caught that. Looking at the pictures did.
+- **Each UI was tested alone.** In the same in-game shot, a status HUD sat under the Play button. A UI tested on its own can't see another resource drawing over it, so we added a check that lists what every frame really draws.
+
+That HUD turned into the worst bug of the round. `qbx_core` empties its player data on logout just before the logged-in flag flips, and three loops read it in that gap. **An error inside a FiveM thread ends that thread for the session.** It's a race, so it's intermittent: the run that caught it survived two logouts, then the HUD froze on screen for good. Handcuff enforcement and evidence discovery had the same flaw.
+
 ## Checks that lied to us
 
 This is the most useful part of the report. Each of these gave a clean-looking result that was wrong.
@@ -65,6 +77,9 @@ This is the most useful part of the report. Each of these gave a clean-looking r
 12. **Testing UI on a black page.** Every layout looked fine on black. Over a capture from the real game, 55 text elements fell below 3:1 contrast, the worst at 1.1:1. If your UI sits over a game world, test it over a game world.
 13. **Our own fix was wrong.** Logging a player out of a spawn selector passed every proof, and a read-only code review then showed it saved the ped's preview position as their last location. Refusing that logout was the right fix. A review from someone who didn't write the code earned its cost.
 
+14. **Our own check said a dead loop was fine.** We saw those logout errors early, compared how often each resource woke before and after a relog, saw no drop, and told the owner they did no harm. That resource has other threads, so its rate held up with its main loop dead. Ask the thing itself: listen for what the loop is telling its page, and treat any new client script error as a failure.
+15. **A control that could pass on nothing.** The first version of that new check accepted an empty result in its own control line. It also needed to fail on the unfixed code before we believed it, and it did.
+
 ## Correction
 
 An earlier version of this report said native aliases starting with `_` can't be called, and that `SetPedHairColor` throws in game. **That was wrong.** We took it from an old note and never tested it. Measured in game on client and server, it exists and works, as an alias of `SetPedHairTint`. Our natives lookup was also reporting valid aliases as not found, which made the note look true. Both are fixed.
@@ -79,6 +94,7 @@ We also spent a long time on a gunshot test that fired but did no damage, and bl
 
 - **The rejection tests only mean something next to a control.** Forged hit reports were refused all along, but until a real hit landed, a broken pipeline would have passed too. Write the control first.
 - **184 hostile inputs against the PvP events showed no crashes and no money changes.** The normal arguments don't move those values either, so this says less than the number suggests. The two-player suite is what proves the hit logic.
+- **The UI audit covers one screen type well.** Character screens run through every shape, finish and several sizes. Settings and delete dialogs, and the spawn selector at other sizes, don't yet.
 - **Only Qbox was run.** The fixes were read against QBCore's source, not run on it. ESX wasn't tested.
 - **Flood numbers are five runs on one PC.**
 - **The test server's checkout can trail the live server,** so a test here isn't automatically proof about production.
@@ -148,4 +164,4 @@ Through msgpack, a trailing nil argument is dropped, so the argument count falls
 
 ## Credits
 
-The RCON client and log lookup are adapted from [ziyacivan/fivem-mcp](https://github.com/ziyacivan/fivem-mcp), and the DevCon frame format came from reading it (MIT). The Lua VM is [citizenfx/lua](https://github.com/citizenfx/lua). Built with Claude Code.
+The RCON client and log lookup are adapted from [ziyacivan/fivem-mcp](https://github.com/ziyacivan/fivem-mcp), and the DevCon frame format came from reading it (MIT). Real keyboard input is adapted from the same project. The crash reader and resource checker are adapted from juliantsu's FiveM MCP (MIT), and the pre-flight check and NUI console capture are ideas from DoluTattoo's dolu_fivem_mcp (MIT). The Lua VM is [citizenfx/lua](https://github.com/citizenfx/lua). Built with Claude Code.
