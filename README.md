@@ -13,7 +13,7 @@ The tool itself is private. Everything here was measured on a local test server,
 | Two clients launched, logged in on separate characters, spawned with no human input | **Works** |
 | Fuzz checks against a deliberately broken resource | **10 of 10** correct |
 | Test runner against the same resource | **10 of 10** correct: 5 real tests passed, and all 5 tests built to fail did fail, each for the right reason |
-| Unit tests on FiveM's real Lua VM, with stubbed natives | **16 of 16** correct: 15 passed, and the 1 built to fail did |
+| Unit tests on FiveM's real Lua VM, with stubbed natives | **17 of 17** correct: 16 passed, and the 1 built to fail did |
 | Real PvP resource, two-player suite | **9 of 9**, including a real gunshot and a real kill as controls |
 | Real character screen, driven through its own buttons | **11 of 11** |
 | Live UI on both clients, game-world screenshots, callbacks, client error logs | **20 of 20** |
@@ -40,11 +40,15 @@ This is the most useful part of the report. Each of these gave a clean-looking r
 3. **A test that ran nothing looked like a pass.** Console-only commands fired from a script refuse silently: 0 passed and 0 failed. Zero checks should never read as success.
 4. **Unfinished spawn looked like desync.** Character loaded isn't the same as in the world. Clients sitting on a spawn selector see each other invisible at `z = -190`, and every sync check fails for a reason unrelated to the code under test.
 5. **Inspecting the wrong client.** The DevTools port follows launch order, not which client you think it is. Have each client announce itself.
-6. **A native that doesn't exist got through.** Aliases starting with `_` in the natives list aren't callable under the plain name. `SetPedHairColor` reads like a real native and throws in game.
-7. **`ok and x or y`.** A step returning `false` came back as the string `"false"`, because Lua falls through to `y` when `x` is false.
-8. **A restart reported success with half the server down.** Predicting dependents from manifests missed real ones. Compare what was running before and after instead.
+6. **`ok and x or y`.** A step returning `false` came back as the string `"false"`, because Lua falls through to `y` when `x` is false.
+7. **A restart reported success with half the server down.** Predicting dependents from manifests missed real ones. Compare what was running before and after instead.
+8. **A window that wasn't really 16:9.** We asked for 960x540 and got 960x561, because the outer window won't go under 600 px tall. The NUI stayed at 1920x1080 and was squashed by about 4%, and every number we'd asked for still looked right. A person watching the screen caught it. Measure the size you got, not the one you asked for.
 
-## Two wrong diagnoses
+## Correction
+
+An earlier version of this report said native aliases starting with `_` can't be called, and that `SetPedHairColor` throws in game. **That was wrong.** We took it from an old note and never tested it. Measured in game on client and server, it exists and works, as an alias of `SetPedHairTint`. Our natives lookup was also reporting valid aliases as not found, which made the note look true. Both are fixed.
+
+## Wrong diagnoses
 
 We blamed number 1 above on JSON turning integers into floats. The next check disproved it. It sounded completely reasonable, which is the point.
 
@@ -76,7 +80,9 @@ Setup: Ryzen 7 5700X, 32 GB RAM, GTX 1650 Super 4 GB, FXServer `v1.0.0.35245`, g
 | DevCon | `29200` | `29300` |
 | Log line marker | `FiveM_b` | `FiveM_cl2_` |
 
-- About 4.5 GB RAM per client and 0.5 GB for the server. VRAM reached 3.8 of 4 GB.
+- About 4 GB RAM per client and 0.5 GB for the server. VRAM reached 3.8 of 4 GB.
+- Automated tests don't need good graphics. Going from two 1080p borderless windows with no FPS cap to two 1024x576 windows with `VSync` 2 and the lowest settings took game CPU from 53% of the PC to 29 to 35%, and GPU from 87% to 35 to 67%. RAM and VRAM barely moved. All the same tests passed.
+- `gta5_settings.xml` in `%APPDATA%\CitizenFX` is one file, shared by both clients and your own game. Back it up and restore it.
 - Free RAM once dropped to 0.5 GB with a browser open.
 - Qbox's `checkDuplicateLicense` has to be off on the test server. Both clients share one license, so they share one character list.
 - Logging into a character already in use gets you kicked by ox_inventory.
