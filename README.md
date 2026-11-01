@@ -20,6 +20,10 @@ The tool itself is private. Everything here was measured on a local test server,
 | Every safety refusal in the tool | **26 of 26** |
 | Forged forwarding headers against the loopback check | **7 of 7** refused |
 | Three existing resource self-tests | **48 checks passed, 0 failed** |
+| A new player, from the real creator through to a saved outfit and a relog | **49 of 49** |
+| 28 bad character payloads straight to the server, plus valid ones at the limits | **47 of 47** |
+| 22 UI layouts measured for overflow, overlap and clipping, then checked in the real game | **Clean, after fixes** |
+| 45 reward events across 7 heist resources, fired from nowhere near the heist | **1 real payout, fixed** |
 
 ## Bugs it found in shipped code
 
@@ -30,6 +34,17 @@ All three were in our shared bridge resource, were already live, passed that res
 3. **Callbacks broke after a restart.** `lib.callback.register` adds a net handler and can't remove one. Registering again after the owning resource restarted left the dead handler in place, it answered first, and the caller got nothing back. Use one stable dispatcher per name.
 
 Number 3 was hidden behind number 2, which is a good argument for testing the fix as well as the bug.
+
+## Round two: a character screen, in the real game
+
+The owner reported two things: new characters got the wrong apartment screen, and many UI layouts looked broken. Both were real.
+
+- **The wrong screen.** A housing resource opens its own picker when a loaded player has no apartment. We now take the pick ourselves, claim the apartment first, and only then announce the player as loaded, so its listener finds the row and stays quiet. That needed no framework edit.
+- **NaN passed validation.** `height < min or height > max` is false for NaN, because every comparison against NaN is. A modified client can send it, since it survives msgpack. Check `value ~= value` too.
+- **A cancelled flow's timer fired later.** A 150-second watchdog from an abandoned handoff tore down the next scene, leaving the camera behind the player's head. Bump a generation number when a new flow starts.
+- **The same watchdog punished slow players.** Anyone taking over 150 seconds to choose lost the mouse.
+- **A client that could say "I finished".** One heist checked completion before paying, but the event that marks completion believed any client, so two events paid out in full. A guard is only as good as whatever sets the flag.
+- **Layouts:** buttons 190 px off screen, text running over its neighbour, a badge on top of a name, labels cut off behind tiles. One cause is worth knowing: a `relative` class from a component's root beats an `absolute` you pass in, and the element lands somewhere else with no error.
 
 ## Checks that lied to us
 
@@ -43,6 +58,12 @@ This is the most useful part of the report. Each of these gave a clean-looking r
 6. **`ok and x or y`.** A step returning `false` came back as the string `"false"`, because Lua falls through to `y` when `x` is false.
 7. **A restart reported success with half the server down.** Predicting dependents from manifests missed real ones. Compare what was running before and after instead.
 8. **A window that wasn't really 16:9.** We asked for 960x540 and got 960x561, because the outer window won't go under 600 px tall. The NUI stayed at 1920x1080 and was squashed by about 4%, and every number we'd asked for still looked right. A person watching the screen caught it. Measure the size you got, not the one you asked for.
+
+9. **"Refused" 20 times in a row, with no client connected.** The client had been kicked, so nothing reached the server, and the database correctly showed no change. A send has to fail loudly when its sender is gone, and a set of valid inputs has to get through as well.
+10. **A clean run that wasn't.** An input loop from an earlier repro was still running in that client session, drawing a radar nobody asked for. Only a fresh client gave a real result, and a check for that loop stayed in the proof.
+11. **`undefined === undefined`.** Two checks passed because both sides were missing.
+12. **Testing UI on a black page.** Every layout looked fine on black. Over a capture from the real game, 55 text elements fell below 3:1 contrast, the worst at 1.1:1. If your UI sits over a game world, test it over a game world.
+13. **Our own fix was wrong.** Logging a player out of a spawn selector passed every proof, and a read-only code review then showed it saved the ped's preview position as their last location. Refusing that logout was the right fix. A review from someone who didn't write the code earned its cost.
 
 ## Correction
 
@@ -97,6 +118,21 @@ Setup: Ryzen 7 5700X, 32 GB RAM, GTX 1650 Super 4 GB, FXServer `v1.0.0.35245`, g
 - Stock `luac5.4 -p` rejects valid CfxLua such as `+=`. Check syntax with the real compiler.
 - `ExecuteCommand('ensure x')` needs ACEs for both stop and start, and a missing one only prints "Access denied". `StopResource` and `StartResource` don't need them.
 - `SetHttpHandler` runs on the game port, so "bind it to localhost" isn't an option in the handler itself.
+
+### Per-resource CPU and memory
+
+- Resmon has no script API, so its numbers can't be read directly.
+- `profiler record N` then `profiler saveJSON` works on the server, and gives `tick (resource)` frames to add up. On the client the same commands ran and no file ever appeared, by script or by DevCon.
+- For the client, we add a small script to each resource through its manifest, on the test checkout only. It wraps `Wait`, `CreateThread` and event handlers, and reads `collectgarbage('count')`.
+- The client's Lua has no `os` library. `GetGameTimer` and `GetNetworkTime` don't move within a frame. `GetNetworkTimeAccurate` does, in 1 ms steps, which still adds up correctly over thousands of samples.
+- Counting wake-ups per second is the easiest way to catch a tight `Wait(0)` loop.
+- DevTools screenshots with `omitBackground` can be laid over a `screencapture` frame, which gives you what the player actually sees.
+
+### Traps from long runs
+
+- An idle test client gets kicked by an AFK timer, partway through whatever you're testing.
+- A resource's client retries opening its UI a few seconds after a restart. Log in too soon and that retry can log you back out.
+- FiveM sometimes hangs at "Analyzing game data" when relaunched soon after a quit. Another quit and launch cleared it.
 
 ### Network events
 
